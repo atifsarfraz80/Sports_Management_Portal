@@ -88,7 +88,7 @@ function confirmAction(message) {
 
 // API CONFIGURATION 
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = 'https://sports-management-portal-kma6.onrender.com/api';
 
 async function apiCall(endpoint, options = {}) {
     const headers = {};
@@ -3343,4 +3343,5 @@ console.log('✅ Tournament Portal Ready!')});
 window.APP_DATA = APP_DATA;
 window.showPage = showPage;
 window.apiCall = apiCall;
+
 console.log('📦 App.js loaded successfully');
