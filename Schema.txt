@@ -1,0 +1,442 @@
+
+
+DROP TABLE IF EXISTS EventAuditLog;
+DROP TABLE IF EXISTS MatchHistory;
+DROP TABLE IF EXISTS TeamRegistrationHistory;
+DROP TABLE IF EXISTS Scores;
+DROP TABLE IF EXISTS PointsTable;
+DROP TABLE IF EXISTS Matches;
+DROP TABLE IF EXISTS Players;
+DROP TABLE IF EXISTS Teams;
+DROP TABLE IF EXISTS EventSports;
+DROP TABLE IF EXISTS Venues;
+DROP TABLE IF EXISTS Sports;
+DROP TABLE IF EXISTS Events;
+DROP TABLE IF EXISTS Users;
+
+
+CREATE TABLE Users (
+    user_id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role ENUM('admin', 'manager') DEFAULT 'manager',
+    email_verified BOOLEAN DEFAULT FALSE,
+    reset_token VARCHAR(255) DEFAULT NULL,
+    reset_token_expires DATETIME DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_email (email),
+    INDEX idx_role (role),
+    INDEX idx_reset_token (reset_token)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+CREATE TABLE Events (
+    event_id INT AUTO_INCREMENT PRIMARY KEY,
+    event_name VARCHAR(100) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    registration_start_date DATE DEFAULT NULL,
+    registration_end_date DATE DEFAULT NULL,
+    registration_status ENUM('not_started', 'open', 'closed') DEFAULT 'not_started',
+    location VARCHAR(200) DEFAULT NULL,
+    description TEXT DEFAULT NULL,
+    status ENUM('planned', 'registration_open', 'active', 'completed') DEFAULT 'planned',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_status (status),
+    INDEX idx_dates (start_date, end_date),
+    INDEX idx_registration_status (registration_status),
+    CHECK (end_date >= start_date),
+    CHECK (registration_end_date IS NULL OR registration_start_date IS NULL OR registration_end_date >= registration_start_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE Sports (
+    sport_id INT AUTO_INCREMENT PRIMARY KEY,
+    sport_name VARCHAR(100) NOT NULL UNIQUE,
+    team_size INT NOT NULL DEFAULT 11,
+    max_substitutes INT DEFAULT 0,
+    registration_fee DECIMAL(10, 2) DEFAULT 0.00,
+    rules TEXT DEFAULT NULL,
+    status ENUM('planned', 'active', 'inactive') DEFAULT 'planned',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_sport_name (sport_name),
+    INDEX idx_status (status),
+    CHECK (team_size > 0 AND team_size <= 50),
+    CHECK (max_substitutes >= 0 AND max_substitutes <= 20),
+    CHECK (registration_fee >= 0 AND registration_fee <= 5000)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE Venues (
+    venue_id INT AUTO_INCREMENT PRIMARY KEY,
+    venue_name VARCHAR(100) NOT NULL,
+    sport_id INT DEFAULT NULL,
+    location VARCHAR(200) DEFAULT NULL,
+    capacity INT DEFAULT NULL,
+    contact VARCHAR(100) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (sport_id) REFERENCES Sports(sport_id) ON DELETE SET NULL,
+    INDEX idx_venue_name (venue_name),
+    INDEX idx_sport_id (sport_id),
+    CHECK (capacity IS NULL OR capacity > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+CREATE TABLE EventSports (
+    event_sport_id INT AUTO_INCREMENT PRIMARY KEY,
+    event_id INT NOT NULL,
+    sport_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (event_id) REFERENCES Events(event_id) ON DELETE CASCADE,
+    FOREIGN KEY (sport_id) REFERENCES Sports(sport_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_event_sport (event_id, sport_id),
+    INDEX idx_event_id (event_id),
+    INDEX idx_sport_id (sport_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+CREATE TABLE Teams (
+    team_id INT AUTO_INCREMENT PRIMARY KEY,
+    team_name VARCHAR(100) NOT NULL,
+    manager_id INT NOT NULL,
+    sport_id INT NOT NULL,
+    event_id INT NOT NULL,
+    logo VARCHAR(255) DEFAULT NULL,
+    payment_screenshot VARCHAR(255) DEFAULT NULL,
+    status ENUM('pending', 'approved', 'rejected', 'disqualified') DEFAULT 'pending',
+    rejection_reason TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (manager_id) REFERENCES Users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (sport_id) REFERENCES Sports(sport_id) ON DELETE CASCADE,
+    FOREIGN KEY (event_id) REFERENCES Events(event_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_team_event_sport (event_id, sport_id, manager_id),
+    INDEX idx_manager_id (manager_id),
+    INDEX idx_sport_id (sport_id),
+    INDEX idx_event_id (event_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+CREATE TABLE Players (
+    player_id INT AUTO_INCREMENT PRIMARY KEY,
+    team_id INT NOT NULL,
+    player_name VARCHAR(100) NOT NULL,
+    jersey_no VARCHAR(10) NOT NULL,
+    age INT DEFAULT NULL,
+    position VARCHAR(50) DEFAULT NULL,
+    player_type ENUM('main', 'substitute') DEFAULT 'main',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (team_id) REFERENCES Teams(team_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_jersey (team_id, jersey_no),
+    INDEX idx_team_id (team_id),
+    INDEX idx_player_type (player_type),
+    CHECK (age IS NULL OR (age >= 10 AND age <= 100)),
+    CHECK (LENGTH(player_name) >= 2 AND LENGTH(player_name) <= 50)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+CREATE TABLE Matches (
+    match_id INT AUTO_INCREMENT PRIMARY KEY,
+    event_id INT NOT NULL,
+    sport_id INT NOT NULL,
+    team1_id INT NOT NULL,
+    team2_id INT NOT NULL,
+    venue_id INT DEFAULT NULL,
+    match_date DATETIME NOT NULL,
+    status ENUM('scheduled', 'live', 'completed', 'cancelled') DEFAULT 'scheduled',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (event_id) REFERENCES Events(event_id) ON DELETE CASCADE,
+    FOREIGN KEY (sport_id) REFERENCES Sports(sport_id) ON DELETE CASCADE,
+    FOREIGN KEY (team1_id) REFERENCES Teams(team_id) ON DELETE CASCADE,
+    FOREIGN KEY (team2_id) REFERENCES Teams(team_id) ON DELETE CASCADE,
+    FOREIGN KEY (venue_id) REFERENCES Venues(venue_id) ON DELETE SET NULL,
+    INDEX idx_event_id (event_id),
+    INDEX idx_sport_id (sport_id),
+    INDEX idx_team1_id (team1_id),
+    INDEX idx_team2_id (team2_id),
+    INDEX idx_match_date (match_date),
+    INDEX idx_status (status),
+    CHECK (team1_id != team2_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+CREATE TABLE Scores (
+    score_id INT AUTO_INCREMENT PRIMARY KEY,
+    match_id INT NOT NULL UNIQUE,
+    team1_score INT NOT NULL DEFAULT 0,
+    team2_score INT NOT NULL DEFAULT 0,
+    winner_team_id INT DEFAULT NULL,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (match_id) REFERENCES Matches(match_id) ON DELETE CASCADE,
+    FOREIGN KEY (winner_team_id) REFERENCES Teams(team_id) ON DELETE SET NULL,
+    INDEX idx_match_id (match_id),
+    INDEX idx_winner_team_id (winner_team_id),
+    CHECK (team1_score >= 0 AND team1_score <= 100),
+    CHECK (team2_score >= 0 AND team2_score <= 100)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+CREATE TABLE PointsTable (
+    points_id INT AUTO_INCREMENT PRIMARY KEY,
+    event_id INT NOT NULL,
+    sport_id INT NOT NULL,
+    team_id INT NOT NULL,
+    matches_played INT DEFAULT 0,
+    wins INT DEFAULT 0,
+    draws INT DEFAULT 0,
+    losses INT DEFAULT 0,
+    goals_for INT DEFAULT 0,
+    goals_against INT DEFAULT 0,
+    goal_difference INT GENERATED ALWAYS AS (goals_for - goals_against) STORED,
+    points INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (event_id) REFERENCES Events(event_id) ON DELETE CASCADE,
+    FOREIGN KEY (sport_id) REFERENCES Sports(sport_id) ON DELETE CASCADE,
+    FOREIGN KEY (team_id) REFERENCES Teams(team_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_event_sport_team (event_id, sport_id, team_id),
+    INDEX idx_event_id (event_id),
+    INDEX idx_sport_id (sport_id),
+    INDEX idx_team_id (team_id),
+    INDEX idx_points (points DESC, goal_difference DESC),
+    CHECK (matches_played >= 0),
+    CHECK (wins >= 0 AND draws >= 0 AND losses >= 0),
+    CHECK (wins + draws + losses <= matches_played),
+    CHECK (goals_for >= 0 AND goals_against >= 0),
+    CHECK (points >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+CREATE TABLE TeamRegistrationHistory (
+    history_id INT AUTO_INCREMENT PRIMARY KEY,
+    team_id INT NOT NULL,
+    action ENUM('created', 'updated', 'approved', 'rejected', 'disqualified') NOT NULL,
+    performed_by INT NOT NULL,
+    notes TEXT DEFAULT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (team_id) REFERENCES Teams(team_id) ON DELETE CASCADE,
+    FOREIGN KEY (performed_by) REFERENCES Users(user_id) ON DELETE CASCADE,
+    INDEX idx_team_id (team_id),
+    INDEX idx_timestamp (timestamp)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE MatchHistory (
+    history_id INT AUTO_INCREMENT PRIMARY KEY,
+    match_id INT NOT NULL,
+    action ENUM('created', 'rescheduled', 'score_updated', 'cancelled', 'completed') NOT NULL,
+    performed_by INT NOT NULL,
+    old_value TEXT DEFAULT NULL,
+    new_value TEXT DEFAULT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (match_id) REFERENCES Matches(match_id) ON DELETE CASCADE,
+    FOREIGN KEY (performed_by) REFERENCES Users(user_id) ON DELETE CASCADE,
+    INDEX idx_match_id (match_id),
+    INDEX idx_timestamp (timestamp)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE EventAuditLog (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    event_id INT NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    performed_by INT NOT NULL,
+    reason TEXT DEFAULT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (event_id) REFERENCES Events(event_id) ON DELETE CASCADE,
+    FOREIGN KEY (performed_by) REFERENCES Users(user_id) ON DELETE CASCADE,
+    INDEX idx_event (event_id),
+    INDEX idx_timestamp (timestamp)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- Default password: admin123 (hashed with bcrypt)
+INSERT INTO Users (username, email, password, role, email_verified) 
+VALUES (
+    'admin',
+    'admin@tournament.com',
+    '$2a$10$rX5K9z8qXqZ5V5Z5Z5Z5ZuF5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5.',
+    'admin',
+    TRUE
+);
+
+
+
+
+INSERT INTO Users (username, email, password, role, email_verified) 
+VALUES (
+    'manager1',
+    'manager@tournament.com',
+    '$2a$10$rX5K9z8qXqZ5V5Z5Z5Z5ZuF5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5.',
+    'manager',
+    TRUE
+);
+
+INSERT INTO Sports (sport_name, team_size, max_substitutes, registration_fee, status) VALUES
+('Football (11v11)', 11, 7, 500.00, 'active'),
+('Cricket (T20)', 11, 4, 750.00, 'active'),
+('Basketball (5v5)', 5, 3, 300.00, 'active'),
+('Volleyball (6v6)', 6, 4, 250.00, 'active'),
+('Badminton (Singles)', 1, 0, 200.00, 'active');
+
+
+INSERT INTO Events (
+    event_name, 
+    start_date, 
+    end_date, 
+    registration_start_date, 
+    registration_end_date, 
+    registration_status,
+    location, 
+    description, 
+    status
+) VALUES (
+    'Spring Sports Festival 2025',
+    '2025-03-01',
+    '2025-03-15',
+    '2025-02-01',
+    '2025-02-28',
+    'not_started',
+    'Central Sports Complex',
+    'Annual inter-college sports tournament featuring multiple sports competitions.',
+    'planned'
+);
+
+
+INSERT INTO EventSports (event_id, sport_id) VALUES
+(1, 1), (1, 2), (1, 3), (1, 4), (1, 5);
+
+
+INSERT INTO Venues (venue_name, sport_id, location, capacity) VALUES
+('Main Football Ground', 1, 'North Campus', 5000),
+('Cricket Stadium', 2, 'East Campus', 3000),
+('Basketball Court A', 3, 'Sports Complex', 500),
+('Volleyball Arena', 4, 'Sports Complex', 800),
+('Badminton Hall', 5, 'Indoor Complex', 300);
+
+
+
+CREATE OR REPLACE VIEW view_team_standings AS
+SELECT 
+    t.team_id,
+    t.team_name,
+    s.sport_name,
+    e.event_name,
+    p.matches_played,
+    p.wins,
+    p.draws,
+    p.losses,
+    p.goals_for,
+    p.goals_against,
+    p.goal_difference,
+    p.points,
+    t.status as team_status
+FROM Teams t
+JOIN Sports s ON t.sport_id = s.sport_id
+JOIN Events e ON t.event_id = e.event_id
+LEFT JOIN PointsTable p ON t.team_id = p.team_id
+WHERE t.status = 'approved'
+ORDER BY e.event_id, s.sport_id, p.points DESC, p.goal_difference DESC;
+
+
+CREATE OR REPLACE VIEW view_upcoming_matches AS
+SELECT 
+    m.match_id,
+    e.event_name,
+    s.sport_name,
+    t1.team_name as team1,
+    t2.team_name as team2,
+    v.venue_name,
+    m.match_date,
+    m.status
+FROM Matches m
+JOIN Events e ON m.event_id = e.event_id
+JOIN Sports s ON m.sport_id = s.sport_id
+JOIN Teams t1 ON m.team1_id = t1.team_id
+JOIN Teams t2 ON m.team2_id = t2.team_id
+LEFT JOIN Venues v ON m.venue_id = v.venue_id
+WHERE m.match_date >= NOW() AND m.status = 'scheduled'
+ORDER BY m.match_date ASC;
+
+
+CREATE OR REPLACE VIEW view_match_results AS
+SELECT 
+    m.match_id,
+    e.event_name,
+    s.sport_name,
+    t1.team_name as team1,
+    t2.team_name as team2,
+    sc.team1_score,
+    sc.team2_score,
+    tw.team_name as winner,
+    m.match_date
+FROM Matches m
+JOIN Events e ON m.event_id = e.event_id
+JOIN Sports s ON m.sport_id = s.sport_id
+JOIN Teams t1 ON m.team1_id = t1.team_id
+JOIN Teams t2 ON m.team2_id = t2.team_id
+LEFT JOIN Scores sc ON m.match_id = sc.match_id
+LEFT JOIN Teams tw ON sc.winner_team_id = tw.team_id
+WHERE m.status = 'completed'
+ORDER BY m.match_date DESC;
+
+
+
+
+DELIMITER $$
+
+CREATE TRIGGER check_event_dates_before_insert
+BEFORE INSERT ON Events
+FOR EACH ROW
+BEGIN
+    IF NEW.registration_end_date > NEW.start_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Registration must end before event starts';
+    END IF;
+END$$
+
+CREATE TRIGGER check_event_dates_before_update
+BEFORE UPDATE ON Events
+FOR EACH ROW
+BEGIN
+    IF NEW.registration_end_date > NEW.start_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Registration must end before event starts';
+    END IF;
+END$$
+
+DELIMITER ;
+
+
+-- Optimize for InnoDB
+SET GLOBAL innodb_buffer_pool_size = 1073741824; -- 1GB
+SET GLOBAL innodb_log_file_size = 268435456;     -- 256MB
+SET GLOBAL max_connections = 200;
+
+-- Character Set
+ALTER DATABASE sports_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+
+
+
+CREATE INDEX idx_team_event_sport ON Teams(event_id, sport_id, status);
+CREATE INDEX idx_match_event_date ON Matches(event_id, match_date, status);
+CREATE INDEX idx_points_ranking ON PointsTable(event_id, sport_id, points DESC, goal_difference DESC);
+
